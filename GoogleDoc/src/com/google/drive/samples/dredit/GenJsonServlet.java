@@ -16,12 +16,18 @@ package com.google.drive.samples.dredit;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.Iterator;
 import java.util.LinkedList;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 
+import com.google.api.client.auth.oauth2.Credential;
+import com.google.api.services.drive.Drive;
+import com.google.api.services.drive.model.File;
+import com.google.api.services.drive.model.Revision;
+import com.google.api.services.drive.model.RevisionList;
 import com.google.drive.samples.dredit.gdocvisual.diff_match_patch.Diff;
 import com.google.drive.samples.dredit.gdocvisual.GDV_Author;
 import com.google.drive.samples.dredit.gdocvisual.GDV_Revision;
@@ -40,10 +46,34 @@ public class GenJsonServlet extends DrEditServlet {
 	@Override
 	public void doGet(HttpServletRequest req, HttpServletResponse resp)
 			throws IOException, ServletException {
+		
+		Drive service = getDriveService(req, resp);
 
 		resp.setContentType("text/html");
 
 		PrintWriter out = resp.getWriter();
+		
+		try {
+			File file = service.files()
+					.get("1tvXWnCjyLlEFdJ9Eq3Grf0ImqMvsRBUc6fH8vpXXK6I")
+					.execute();
+			RevisionList revisions = service.revisions().list("1tvXWnCjyLlEFdJ9Eq3Grf0ImqMvsRBUc6fH8vpXXK6I").execute(); 
+			java.util.List<Revision> revisionList = revisions.getItems();
+			
+			Iterator<Revision> iterator = revisionList.iterator();
+			Revision item;
+			
+			while (iterator.hasNext()) {
+				item = iterator.next();
+				out.print(item.getModifiedDate() + " : " + item.getLastModifyingUserName() + "\n");
+			}
+			out.print("Title: " + file.getTitle());
+			out.print("Description: " + file.getDescription());
+			out.print("MIME type: " + file.getMimeType());
+		} catch (IOException e) {
+			out.print("An error occured: " + e);
+			return;
+		}
 
 		String paramName = "doc";
 		docId = req.getParameter(paramName);
@@ -51,11 +81,14 @@ public class GenJsonServlet extends DrEditServlet {
 		//diffRevision("10bnkUoFN4p6bDL3fmOAmzP68Yp32PqyH5SHxs8Xw69g", resp);
 		diffRevision(docId, resp);
 		req.setAttribute("styles", docjson);
-		/*
-		 * out.println( "<!DOCTYPE HTML>\n" + "<html>\n" + "<body>\n" +
-		 * "<p>Hello WWW</p>\n" + paramValue + "</body></html>");
-		 */
 		req.getRequestDispatcher("/WEB-INF/templates/mm.jsp").forward(req, resp);
+	}
+	
+	private Drive getDriveService(HttpServletRequest req,
+			HttpServletResponse resp) {
+		Credential credentials = getCredential(req, resp);
+
+		return new Drive.Builder(TRANSPORT, JSON_FACTORY, credentials).build();
 	}
 
 	private void diffRevision(String docId, HttpServletResponse resp) {

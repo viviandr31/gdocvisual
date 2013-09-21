@@ -18,9 +18,13 @@ import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.client.googleapis.json.GoogleJsonResponseException;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.About;
+import com.google.api.services.drive.model.File;
+import com.google.api.services.drive.model.Revision;
+import com.google.api.services.drive.model.RevisionList;
 import com.google.gson.Gson;
 
 import java.io.IOException;
+import java.util.Iterator;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
@@ -40,7 +44,7 @@ public class AboutServlet extends DrEditServlet {
   public void doGet(HttpServletRequest req, HttpServletResponse resp)
       throws IOException {
     Drive service = getDriveService(req, resp);
-    try {
+/*    try {
     	About about = service.about().get().execute();
       resp.setContentType(JSON_MIMETYPE);
       resp.getWriter().print(new Gson().toJson(about));
@@ -52,7 +56,31 @@ public class AboutServlet extends DrEditServlet {
         sendError(resp, 401, "Unauthorized");
         return;
       }
-    }
+    }*/
+    resp.setContentType(JSON_MIMETYPE);
+    try {
+		File file = service.files()
+				.get("1tvXWnCjyLlEFdJ9Eq3Grf0ImqMvsRBUc6fH8vpXXK6I")
+				.execute();
+		RevisionList revisions = service.revisions().list("1tvXWnCjyLlEFdJ9Eq3Grf0ImqMvsRBUc6fH8vpXXK6I").execute(); 
+		java.util.List<Revision> revisionList = revisions.getItems();
+		
+		Iterator<Revision> iterator = revisionList.iterator();
+		Revision item;
+		
+		while (iterator.hasNext()) {
+			item = iterator.next();
+			resp.getWriter().print(item.getModifiedDate() + " : " + item.getLastModifyingUserName() + "\n");
+		}
+		resp.getWriter().print("Title: " + file.getTitle());
+		resp.getWriter().print("Description: " + file.getDescription());
+		resp.getWriter().print("MIME type: " + file.getMimeType());
+	} catch (IOException e) {
+		resp.getWriter().print("An error occured: " + e);
+		return;
+	}
+    
+	
   }
 
   /**
