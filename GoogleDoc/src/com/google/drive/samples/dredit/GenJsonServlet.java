@@ -16,12 +16,15 @@ package com.google.drive.samples.dredit;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.LinkedList;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+
+import sun.print.resources.serviceui;
 
 import com.google.api.client.auth.oauth2.Credential;
 import com.google.api.services.drive.Drive;
@@ -42,48 +45,107 @@ public class GenJsonServlet extends DrEditServlet {
 	
 	String docjson;
 	String docId;
+	Drive gdr_service;
+	RevisionList revisions;
+	HashSet<String> authorHashSet;
+	LinkedList<GDV_Author> authorsList;
+	LinkedList<GDV_Revision> revisionList;
 
 	@Override
 	public void doGet(HttpServletRequest req, HttpServletResponse resp)
 			throws IOException, ServletException {
 		
-		Drive service = getDriveService(req, resp);
+		gdr_service = getDriveService(req, resp);
 
-		resp.setContentType("text/html");
+		resp.setContentType("text/plain");
 
 		PrintWriter out = resp.getWriter();
 		
 		try {
-			File file = service.files()
-					.get("1tvXWnCjyLlEFdJ9Eq3Grf0ImqMvsRBUc6fH8vpXXK6I")
-					.execute();
-			RevisionList revisions = service.revisions().list("1tvXWnCjyLlEFdJ9Eq3Grf0ImqMvsRBUc6fH8vpXXK6I").execute(); 
-			java.util.List<Revision> revisionList = revisions.getItems();
-			
-			Iterator<Revision> iterator = revisionList.iterator();
-			Revision item;
-			
-			while (iterator.hasNext()) {
-				item = iterator.next();
-				out.print(item.getModifiedDate() + " : " + item.getLastModifyingUserName() + "\n");
-			}
-			out.print("Title: " + file.getTitle());
-			out.print("Description: " + file.getDescription());
-			out.print("MIME type: " + file.getMimeType());
+			revisions = gdr_service.revisions().list("1tvXWnCjyLlEFdJ9Eq3Grf0ImqMvsRBUc6fH8vpXXK6I").execute(); 
 		} catch (IOException e) {
 			out.print("An error occured: " + e);
 			return;
 		}
+		
+		initAuthors();
+		for (GDV_Author author : authorsList) {
+			out.println(author.getAuthorId() + " : " + author.getEmail());
+		}
+		
+		initRevision(resp);
+		for (GDV_Revision newRevision : revisionList) {
+			out.println("revision" + newRevision.getRevisionId());
+		}
 
-		String paramName = "doc";
-		docId = req.getParameter(paramName);
 
-		//diffRevision("10bnkUoFN4p6bDL3fmOAmzP68Yp32PqyH5SHxs8Xw69g", resp);
+		//String paramName = "doc";
+		//docId = req.getParameter(paramName);
+		//diffRevision("1tvXWnCjyLlEFdJ9Eq3Grf0ImqMvsRBUc6fH8vpXXK6I", resp);
 		diffRevision(docId, resp);
 		req.setAttribute("styles", docjson);
 		req.getRequestDispatcher("/WEB-INF/templates/mm.jsp").forward(req, resp);
 	}
 	
+	private void initAuthors() {
+		authorsList = new LinkedList<GDV_Author>();
+		
+		Iterator<Revision> iterator = revisions.getItems().iterator();
+		Revision item;
+
+		authorHashSet = new HashSet<String>();
+		int authorID = 0;
+
+		while (iterator.hasNext()) {
+			item = iterator.next();
+			String authorName = item.getLastModifyingUserName();
+			if (!authorHashSet.contains(authorName)) {
+				authorHashSet.add(authorName);
+				GDV_Author author = new GDV_Author();
+				author.setAuthorId(authorID++);
+				author.setEmail(authorName);
+				authorsList.add(author);
+			}
+		}
+		
+	}
+	
+	private void initRevision(HttpServletResponse resp) throws IOException, ServletException {
+		revisionList = new LinkedList<GDV_Revision>();
+		
+		PrintWriter out = resp.getWriter();
+		
+		int revisionID = 0;
+		
+		Iterator<Revision> iterator = revisions.getItems().iterator();
+		Revision item;
+		
+		
+		while (iterator.hasNext()) {
+			item = iterator.next();
+			GDV_Revision revision = new GDV_Revision();
+			revision.setDocId("1tvXWnCjyLlEFdJ9Eq3Grf0ImqMvsRBUc6fH8vpXXK6I");
+			revision.setRevisionId(Integer.toString(revisionID++));
+			revision.setContent("content 0");
+			GDV_Author author = findAuthorByEmail(authorsList, item.getLastModifyingUser().getDisplayName());
+			revision.setAuthor(author);
+			revision.setTime(item.getModifiedDate().toString());
+			revision.setRevisionLength(123);
+			revisionList.add(revision);
+		}
+		
+/*		GDV_Revision revision = new GDV_Revision();
+		revision.setDocId("10bnkUoFN4p6bDL3fmOAmzP68Yp32PqyH5SHxs8Xw69g");
+		revision.setRevisionId("0");
+		revision.setContent("content 0");
+		GDV_Author author = findAuthorByEmail(authorsList, "jeff");
+		revision.setAuthor(author);
+		revision.setTime("2012:12:12");
+		revision.setRevisionLength(123);
+		revisionList.add(revision);*/
+		
+	}
+
 	private Drive getDriveService(HttpServletRequest req,
 			HttpServletResponse resp) {
 		Credential credentials = getCredential(req, resp);
@@ -91,13 +153,17 @@ public class GenJsonServlet extends DrEditServlet {
 		return new Drive.Builder(TRANSPORT, JSON_FACTORY, credentials).build();
 	}
 
-	private void diffRevision(String docId, HttpServletResponse resp) {
+	private void diffRevision(String docId, HttpServletResponse resp) throws IOException, ServletException {
 		diff_match_patch dmp = new diff_match_patch();
 		dmp.Diff_Timeout = 0;
 		// Load Revisions From Database
-		LinkedList<GDV_Author> authorList = loadAuthorsFromDB(docId);
-		LinkedList<GDV_Revision> revisionList = loadRevisionFromDB(docId,
-				authorList);
+		// LinkedList<GDV_Author> authorList = loadAuthorsFromDB(docId);
+		// LinkedList<GDV_Revision> revisionList = loadRevisionFromDB(docId,
+		// authorList);
+		//initAuthors();
+		//initRevision();
+		
+		PrintWriter out = resp.getWriter();
 
 		GDV_Revision oldRevision = null;
 		LinkedList<GDV_Segment> segmentList = new LinkedList<GDV_Segment>();
@@ -111,9 +177,10 @@ public class GenJsonServlet extends DrEditServlet {
 
 			for (GDV_Revision newRevision : revisionList) {
 
-				System.out.println("revision" + newRevision.getRevisionId());
+				out.println("revision" + newRevision.getRevisionId());
 
 				if (oldRevision == null) {
+					
 					GDV_Segment insertSegment = new GDV_Segment();
 					insertSegment.setSegmentId(segmentIndex++);
 					insertSegment.setAuthor(newRevision.getAuthor());
@@ -121,6 +188,7 @@ public class GenJsonServlet extends DrEditServlet {
 					insertSegment.setContent(newRevision.getContent());
 					insertSegment.setStartIndex(0);
 					insertSegment.setLength(newRevision.getContent().length());
+					
 					if (insertSegment.getLength() == 0)
 						insertSegment.setEndIndex(0);
 					else
@@ -130,6 +198,7 @@ public class GenJsonServlet extends DrEditServlet {
 
 					newRevision.addSegment(insertSegment);
 					segmentList.add(insertSegment);
+					
 				} else {
 					LinkedList<Diff> diffs = dmp.diff_main(
 							oldRevision.getContent(), newRevision.getContent(),
@@ -361,7 +430,7 @@ public class GenJsonServlet extends DrEditServlet {
 					.excludeFieldsWithoutExposeAnnotation().create();
 			String revisionOutput = gson.toJson(revisionList);
 			String segmentOutput = gson.toJson(segmentList);
-			String authorOutput = gson.toJson(authorList);
+			String authorOutput = gson.toJson(authorsList);
 
 			resp.getWriter().println(
 					"{\"revisions\":" + revisionOutput + ",\"segments\":"
@@ -438,7 +507,7 @@ public class GenJsonServlet extends DrEditServlet {
 		return null;
 	}
 
-	private static LinkedList<GDV_Author> loadAuthorsFromDB(String docId) {
+	private LinkedList<GDV_Author> loadAuthorsFromDB(String docId) {
 		LinkedList<GDV_Author> authorsList = new LinkedList<GDV_Author>();
 
 		/*
@@ -472,6 +541,8 @@ public class GenJsonServlet extends DrEditServlet {
 		 */
 
 		// jeff
+		
+		
 		GDV_Author author = new GDV_Author();
 		author.setAuthorId(0);
 		author.setEmail("jeff");
