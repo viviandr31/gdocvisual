@@ -112,7 +112,7 @@ function pickerCallback(data) {
 		var name = doc[google.picker.Document.NAME];
 		document.getElementById('doc-title').innerHTML = name;
 		
-		window.location.replace('docvisual?doc=' + name);
+		window.location.replace('docvisual?doc=' + name + '&docid=' + id);
 
 		// Your beautiful D3 code will go here
 

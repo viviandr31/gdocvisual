@@ -65,10 +65,10 @@ public class GenJsonServlet extends DrEditServlet {
 		resp.setContentType("text/plain");
 
 		PrintWriter out = resp.getWriter();
-		String paramName = "doc";
+		String paramName = "docid";
 		docId = req.getParameter(paramName);
 		try {
-			revisions = gdr_service.revisions().list("1xalHE0IASYxls1bnz7n5fFaN_HG6k_daMIhV3dScVH0").execute(); 
+			revisions = gdr_service.revisions().list(docId).execute(); 
 		} catch (IOException e) {
 			out.print("An error occured: " + e);
 			return;
