@@ -14,7 +14,10 @@
 
 package com.google.drive.samples.dredit;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -27,6 +30,8 @@ import javax.servlet.http.HttpServletResponse;
 import sun.print.resources.serviceui;
 
 import com.google.api.client.auth.oauth2.Credential;
+import com.google.api.client.http.GenericUrl;
+import com.google.api.client.http.HttpResponse;
 import com.google.api.services.drive.Drive;
 import com.google.api.services.drive.model.File;
 import com.google.api.services.drive.model.Revision;
@@ -60,29 +65,22 @@ public class GenJsonServlet extends DrEditServlet {
 		resp.setContentType("text/plain");
 
 		PrintWriter out = resp.getWriter();
-		
+		String paramName = "doc";
+		docId = req.getParameter(paramName);
 		try {
-			revisions = gdr_service.revisions().list("1tvXWnCjyLlEFdJ9Eq3Grf0ImqMvsRBUc6fH8vpXXK6I").execute(); 
+			revisions = gdr_service.revisions().list("1xalHE0IASYxls1bnz7n5fFaN_HG6k_daMIhV3dScVH0").execute(); 
 		} catch (IOException e) {
 			out.print("An error occured: " + e);
 			return;
 		}
 		
 		initAuthors();
-		for (GDV_Author author : authorsList) {
-			out.println(author.getAuthorId() + " : " + author.getEmail());
-		}
-		
 		initRevision(resp);
-		for (GDV_Revision newRevision : revisionList) {
-			out.println("revision" + newRevision.getRevisionId());
-		}
 
 
-		//String paramName = "doc";
-		//docId = req.getParameter(paramName);
-		//diffRevision("1tvXWnCjyLlEFdJ9Eq3Grf0ImqMvsRBUc6fH8vpXXK6I", resp);
-		diffRevision(docId, resp);
+
+		diffRevision("1tvXWnCjyLlEFdJ9Eq3Grf0ImqMvsRBUc6fH8vpXXK6I", resp);
+		//diffRevision(docId, resp);
 		req.setAttribute("styles", docjson);
 		req.getRequestDispatcher("/WEB-INF/templates/mm.jsp").forward(req, resp);
 	}
@@ -109,7 +107,8 @@ public class GenJsonServlet extends DrEditServlet {
 		}
 		
 	}
-	
+
+
 	private void initRevision(HttpServletResponse resp) throws IOException, ServletException {
 		revisionList = new LinkedList<GDV_Revision>();
 		
@@ -120,17 +119,48 @@ public class GenJsonServlet extends DrEditServlet {
 		Iterator<Revision> iterator = revisions.getItems().iterator();
 		Revision item;
 		
-		
 		while (iterator.hasNext()) {
 			item = iterator.next();
 			GDV_Revision revision = new GDV_Revision();
 			revision.setDocId("1tvXWnCjyLlEFdJ9Eq3Grf0ImqMvsRBUc6fH8vpXXK6I");
 			revision.setRevisionId(Integer.toString(revisionID++));
-			revision.setContent("content 0");
+			
 			GDV_Author author = findAuthorByEmail(authorsList, item.getLastModifyingUser().getDisplayName());
 			revision.setAuthor(author);
 			revision.setTime(item.getModifiedDate().toString());
-			revision.setRevisionLength(123);
+			
+/*			out.println(item.getLastModifyingUser().getDisplayName()
+					+ Integer.toString(revisionID) + "file url = "
+					+ item.getExportLinks().get("text/plain"));*/
+			
+			try {
+				HttpResponse fileContentResp = gdr_service
+						.getRequestFactory()
+						.buildGetRequest(
+								new GenericUrl(item.getExportLinks().get(
+										"text/plain"))).execute();
+				InputStream fileContentStrem = fileContentResp.getContent();
+				
+				StringBuilder sbuilder = null;
+				BufferedReader input = null;
+				
+				input = new BufferedReader(new InputStreamReader(fileContentStrem, "UTF-8"));
+				sbuilder = new StringBuilder();
+				String str = input.readLine();
+				while (str != null) {
+					sbuilder.append(str);
+					str = input.readLine();
+					if (str != null) {
+						 sbuilder.append("\n");
+					}
+				}
+				revision.setContent(sbuilder.toString());
+				revision.setRevisionLength(sbuilder.toString().length());
+			} catch (IOException e) {
+				// An error occurred.
+				e.printStackTrace();
+			}
+			
 			revisionList.add(revision);
 		}
 		
